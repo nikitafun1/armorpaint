@@ -1,4 +1,4 @@
-name: Build ArmorPaint (Windows Fixed Paths)
+name: Build ArmorPaint (Windows Working Directory Fix)
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Unpack V8 Engine (Modern Path)
         shell: powershell
         run: |
-          # Динамічно шукаємо та розпаковуємо v8_monolith.7z у субмодулях
+          # Автоматично шукаємо v8_monolith.7z у субмодулях та розпаковуємо його
           $v8_archive = Get-ChildItem -Path . -Filter "v8_monolith.7z" -Recurse | Select-Object -First 1
           if ($v8_archive) {
               Write-Host "Found V8 archive at: $($v8_archive.FullName)"
@@ -42,14 +42,13 @@ jobs:
           }
 
       - name: Generate Visual Studio Solution
+        working-directory: paint
         run: |
-          cd paint
           ..\base\make
 
       - name: Compile ArmorPaint (MSBuild)
+        working-directory: paint/build
         run: |
-          # Проект ArmorPaint.sln генерується всередині папки paint/build/
-          cd paint/build
           msbuild ArmorPaint.sln /p:Configuration=Release /p:Platform=x64
 
       - name: Assemble Ready-to-Run Package
@@ -58,7 +57,7 @@ jobs:
           # Створюємо чисту теку для вашого готового дистрибутива
           New-Item -ItemType Directory -Force -Path "dist/ArmorPaint"
 
-          # Скопіюємо скомпільований файл .exe (він лежить у paint/build/x64/Release/)
+          # Скопіюємо скомпільований файл .exe (він має лежати у paint/build/x64/Release/)
           if (Test-Path -Path "paint/build/x64/Release/ArmorPaint.exe") {
               Copy-Item -Path "paint/build/x64/Release/ArmorPaint.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
           } elseif (Test-Path -Path "paint/build/x64/Release/Krom.exe") {
