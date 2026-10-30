@@ -1,0 +1,73 @@
+name: Build ArmorPaint (Windows Complete)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Clone ArmorPaint Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Unpack V8 Engine Libraries
+        shell: powershell
+        run: |
+          cd armorcore/v8/libraries/win32/release
+          7z x v8_monolith.7z
+          Remove-Item v8_monolith.7z
+
+      - name: Generate Visual Studio Solution
+        run: |
+          node armorcore/make -g direct3d11
+
+      - name: Compile ArmorPaint (Krom)
+        run: |
+          cd armorcore/build
+          msbuild Krom.sln /p:Configuration=Release /p:Platform=x64
+
+      - name: Assemble Complete Windows App Bundle
+        shell: powershell
+        run: |
+          # 1. Створюємо фінальну папку, яку ви завантажите
+          New-Item -ItemType Directory -Force -Path "dist/ArmorPaint"
+          
+          # 2. Копіюємо головний виконуваний файл і перейменовуємо його для зручності
+          Copy-Item -Path "armorcore/build/x64/Release/Krom.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
+          
+          # 3. Компілюємо та копіюємо шейдери програми (без них буде просто чорний екран)
+          node armorcore/make -g direct3d11 --compile
+          if (Test-Path -Path "armorcore/build/krom") {
+              Copy-Item -Path "armorcore/build/krom/*" -Destination "dist/ArmorPaint" -Recurse -Force
+          }
+          
+          # 4. Копіюємо ресурси самого ArmorPaint (інтерфейс, логіку, іконки, плагіни)
+          if (Test-Path -Path "data") {
+              Copy-Item -Path "data" -Destination "dist/ArmorPaint/data" -Recurse -Force
+          }
+          if (Test-Path -Path "shade") {
+              Copy-Item -Path "shade" -Destination "dist/ArmorPaint/shade" -Recurse -Force
+          }
+          
+          echo "Assembly completed successfully. All components are in dist/ArmorPaint."
+
+      - name: Upload Windows Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArmorPaint-Windows-x64
+          path: dist/ArmorPaint/
