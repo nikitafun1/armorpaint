@@ -1,4 +1,4 @@
-name: Build ArmorPaint (Windows Fixed)
+name: Build ArmorPaint (Windows Fixed Paths)
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Unpack V8 Engine (Modern Path)
         shell: powershell
         run: |
-          # Автоматичний пошук файлу v8_monolith.7z, де б він не лежав у субмодулях
+          # Динамічно шукаємо та розпаковуємо v8_monolith.7z у субмодулях
           $v8_archive = Get-ChildItem -Path . -Filter "v8_monolith.7z" -Recurse | Select-Object -First 1
           if ($v8_archive) {
               Write-Host "Found V8 archive at: $($v8_archive.FullName)"
@@ -36,9 +36,9 @@ jobs:
               cd $target_dir
               7z x v8_monolith.7z -aoa
               Remove-Item v8_monolith.7z
-              Write-Host "V8 extracted successfully in $target_dir."
+              Write-Host "V8 extracted successfully."
           } else {
-              Write-Host "v8_monolith.7z not found. Skipping or already handled."
+              Write-Host "v8_monolith.7z not found. Skipping."
           }
 
       - name: Generate Visual Studio Solution
@@ -48,29 +48,29 @@ jobs:
 
       - name: Compile ArmorPaint (MSBuild)
         run: |
-          cd build
+          # Проект ArmorPaint.sln генерується всередині папки paint/build/
+          cd paint/build
           msbuild ArmorPaint.sln /p:Configuration=Release /p:Platform=x64
 
       - name: Assemble Ready-to-Run Package
         shell: powershell
         run: |
-          # Створюємо чисту фінальну папку для дистрибутива
+          # Створюємо чисту теку для вашого готового дистрибутива
           New-Item -ItemType Directory -Force -Path "dist/ArmorPaint"
 
-          # Копіюємо зкомпільований .exe файл програми
-          if (Test-Path -Path "build/x64/Release/ArmorPaint.exe") {
-              Copy-Item -Path "build/x64/Release/ArmorPaint.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
-          } else {
-              # Фолбек, якщо exe зберігся під старою назвою рушія Krom
-              Copy-Item -Path "build/x64/Release/Krom.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
+          # Скопіюємо скомпільований файл .exe (він лежить у paint/build/x64/Release/)
+          if (Test-Path -Path "paint/build/x64/Release/ArmorPaint.exe") {
+              Copy-Item -Path "paint/build/x64/Release/ArmorPaint.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
+          } elseif (Test-Path -Path "paint/build/x64/Release/Krom.exe") {
+              Copy-Item -Path "paint/build/x64/Release/Krom.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
           }
 
-          # Копіюємо весь необхідний контент програми (скрипти, інтерфейс, шейдери)
-          if (Test-Path -Path "build/krom") {
-              Copy-Item -Path "build/krom/*" -Destination "dist/ArmorPaint" -Recurse -Force
+          # Переносимо інтерфейс, шейдери та скрипти (вони створюються в paint/build/krom/)
+          if (Test-Path -Path "paint/build/krom") {
+              Copy-Item -Path "paint/build/krom/*" -Destination "dist/ArmorPaint" -Recurse -Force
           }
 
-          Write-Host "Assembly completed successfully. Artifact is ready!"
+          Write-Host "All files successfully packed into dist/ArmorPaint!"
 
       - name: Upload Windows Build Artifact
         uses: actions/upload-artifact@v4
