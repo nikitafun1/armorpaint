@@ -1,4 +1,4 @@
-name: Build ArmorPaint (Windows Complete)
+name: Build ArmorPaint (Windows Fixed)
 
 on:
   push:
@@ -25,49 +25,55 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Unpack V8 Engine Libraries
+      - name: Unpack V8 Engine (Modern Path)
         shell: powershell
         run: |
-          cd armorcore/v8/libraries/win32/release
-          7z x v8_monolith.7z
-          Remove-Item v8_monolith.7z
+          # Автоматичний пошук файлу v8_monolith.7z, де б він не лежав у субмодулях
+          $v8_archive = Get-ChildItem -Path . -Filter "v8_monolith.7z" -Recurse | Select-Object -First 1
+          if ($v8_archive) {
+              Write-Host "Found V8 archive at: $($v8_archive.FullName)"
+              $target_dir = $v8_archive.DirectoryName
+              cd $target_dir
+              7z x v8_monolith.7z -aoa
+              Remove-Item v8_monolith.7z
+              Write-Host "V8 extracted successfully in $target_dir."
+          } else {
+              Write-Host "v8_monolith.7z not found. Skipping or already handled."
+          }
 
       - name: Generate Visual Studio Solution
         run: |
-          node armorcore/make -g direct3d11
+          cd paint
+          ..\base\make
 
-      - name: Compile ArmorPaint (Krom)
+      - name: Compile ArmorPaint (MSBuild)
         run: |
-          cd armorcore/build
-          msbuild Krom.sln /p:Configuration=Release /p:Platform=x64
+          cd build
+          msbuild ArmorPaint.sln /p:Configuration=Release /p:Platform=x64
 
-      - name: Assemble Complete Windows App Bundle
+      - name: Assemble Ready-to-Run Package
         shell: powershell
         run: |
-          # 1. Створюємо фінальну папку, яку ви завантажите
+          # Створюємо чисту фінальну папку для дистрибутива
           New-Item -ItemType Directory -Force -Path "dist/ArmorPaint"
-          
-          # 2. Копіюємо головний виконуваний файл і перейменовуємо його для зручності
-          Copy-Item -Path "armorcore/build/x64/Release/Krom.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
-          
-          # 3. Компілюємо та копіюємо шейдери програми (без них буде просто чорний екран)
-          node armorcore/make -g direct3d11 --compile
-          if (Test-Path -Path "armorcore/build/krom") {
-              Copy-Item -Path "armorcore/build/krom/*" -Destination "dist/ArmorPaint" -Recurse -Force
+
+          # Копіюємо зкомпільований .exe файл програми
+          if (Test-Path -Path "build/x64/Release/ArmorPaint.exe") {
+              Copy-Item -Path "build/x64/Release/ArmorPaint.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
+          } else {
+              # Фолбек, якщо exe зберігся під старою назвою рушія Krom
+              Copy-Item -Path "build/x64/Release/Krom.exe" -Destination "dist/ArmorPaint/ArmorPaint.exe"
           }
-          
-          # 4. Копіюємо ресурси самого ArmorPaint (інтерфейс, логіку, іконки, плагіни)
-          if (Test-Path -Path "data") {
-              Copy-Item -Path "data" -Destination "dist/ArmorPaint/data" -Recurse -Force
+
+          # Копіюємо весь необхідний контент програми (скрипти, інтерфейс, шейдери)
+          if (Test-Path -Path "build/krom") {
+              Copy-Item -Path "build/krom/*" -Destination "dist/ArmorPaint" -Recurse -Force
           }
-          if (Test-Path -Path "shade") {
-              Copy-Item -Path "shade" -Destination "dist/ArmorPaint/shade" -Recurse -Force
-          }
-          
-          echo "Assembly completed successfully. All components are in dist/ArmorPaint."
+
+          Write-Host "Assembly completed successfully. Artifact is ready!"
 
       - name: Upload Windows Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ArmorPaint-Windows-x64
+          name: ArmorPaint-Windows-Ready
           path: dist/ArmorPaint/
